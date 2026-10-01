@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"time"
+)
 
 type RunState string
 
@@ -92,31 +96,67 @@ func (r *FermentationRun) StartFermentation(now time.Time) error {
 }
 
 func (r *FermentationRun) AddObservation(observation GravityObservation) error {
+	return r.AddObservations([]GravityObservation{observation})
+}
+
+// AddObservations appends a batch of observations atomically. Every record is
+// validated against the resulting series before the run is mutated, so a single
+// invalid record rejects the whole batch without leaving a partial series.
+// Applying the records one at a time with the same shared receipt time is
+// exactly equivalent, which keeps batch and single-record writes on the same
+// legal data identical.
+func (r *FermentationRun) AddObservations(observations []GravityObservation) error {
 	if r.State != RunFermenting || r.StartedAt == nil {
 		return NewError(CodeRunState, "observations require a fermenting run")
 	}
-	if len(r.Observations) >= 500 {
+	if len(observations) == 0 {
+		return FieldError(CodeInvalidInput, "observations",
+			"at least one observation is required")
+	}
+	if len(r.Observations)+len(observations) > 500 {
 		return NewError(CodeObservationConflict,
 			"run cannot contain more than 500 observations")
 	}
+
+	candidates := make([]GravityObservation, len(r.Observations), len(r.Observations)+len(observations))
+	copy(candidates, r.Observations)
 	var previous *GravityObservation
-	if len(r.Observations) > 0 {
-		value := r.Observations[len(r.Observations)-1]
+	if len(candidates) > 0 {
+		value := candidates[len(candidates)-1]
 		previous = &value
 	}
-	if err := ValidateObservation(*r.StartedAt, previous, observation, observation.ReceivedAt); err != nil {
+	receivedAt := observations[0].ReceivedAt.UTC()
+	for index, observation := range observations {
+		if err := ValidateObservation(*r.StartedAt, previous, observation, receivedAt); err != nil {
+			return batchObservationError(index, err)
+		}
+		expected := len(candidates) + 1
+		if observation.Sequence != expected {
+			return batchObservationError(index, NewError(CodeObservationConflict,
+				"observation sequence must be contiguous and begin at 1"))
+		}
+		observation.RunID = r.ID
+		candidates = append(candidates, observation)
+		value := candidates[len(candidates)-1]
+		previous = &value
+	}
+
+	r.Observations = candidates
+	r.UpdatedAt = receivedAt
+	r.Version += int64(len(observations))
+	return nil
+}
+
+// batchObservationError prefixes a record-level error with its zero-based
+// position in the submitted file so failed batches can be corrected.
+func batchObservationError(index int, err error) error {
+	var domainErr *Error
+	if !errors.As(err, &domainErr) {
 		return err
 	}
-	expected := len(r.Observations) + 1
-	if observation.Sequence != expected {
-		return NewError(CodeObservationConflict,
-			"observation sequence must be contiguous and begin at 1")
-	}
-	observation.RunID = r.ID
-	r.Observations = append(r.Observations, observation)
-	r.UpdatedAt = observation.ReceivedAt.UTC()
-	r.Version++
-	return nil
+	copy := *domainErr
+	copy.Message = fmt.Sprintf("observation %d: %s", index+1, copy.Message)
+	return &copy
 }
 
 func (r *FermentationRun) BeginConditioning(now time.Time) error {

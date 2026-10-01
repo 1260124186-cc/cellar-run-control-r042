@@ -90,6 +90,7 @@ Run workflow:
 - `POST /v1/runs/{id}/reserve`
 - `POST /v1/runs/{id}/start`
 - `POST /v1/runs/{id}/observations`
+- `POST /v1/runs/{id}/observations/batch`
 - `POST /v1/runs/{id}/conditioning`
 - `POST /v1/runs/{id}/complete`
 - `POST /v1/runs/{id}/abort`
@@ -107,6 +108,28 @@ shape:
 }
 ```
 
+### Observation batches
+
+A field file can contain a whole batch of observations. Submit them together to
+`POST /v1/runs/{id}/observations/batch` preserving the in-file order:
+
+```json
+{
+  "observations": [
+    {"sequence": 1, "gravity": 1.060, "temperature_c": 20.0, "observed_at": "2026-09-30T23:59:30Z", "note": "before midnight"},
+    {"sequence": 2, "gravity": 1.040, "temperature_c": 20.5, "observed_at": "2026-10-01T00:04:00Z", "note": "across midnight"}
+  ]
+}
+```
+
+Sequences must be contiguous from the run's next expected sequence, observed
+times must strictly increase in file order (including across day boundaries),
+and gravity, temperature, and gravity-movement limits apply to every record.
+The batch is all-or-nothing: if any record fails, none are persisted and the
+run version is unchanged. A successful batch advances the run version once per
+record and yields exactly the same run detail, version, and completion metrics
+as writing the same legal records one at a time.
+
 ## Workflow Checks
 
 Run each production workflow check separately:
@@ -115,6 +138,7 @@ Run each production workflow check separately:
 go run ./cmd/fermentctl check formula-approval
 go run ./cmd/fermentctl check vessel-run-lifecycle
 go run ./cmd/fermentctl check observations-completion
+go run ./cmd/fermentctl check observation-batch
 ```
 
 Each check creates a temporary snapshot directory, starts the real HTTP

@@ -26,6 +26,20 @@ type observationRequest struct {
 	Note         string    `json:"note"`
 }
 
+type observationBatchRequest struct {
+	Observations []observationRequest `json:"observations"`
+}
+
+func observationInput(body observationRequest) service.ObservationInput {
+	return service.ObservationInput{
+		Sequence:     body.Sequence,
+		Gravity:      body.Gravity,
+		TemperatureC: body.TemperatureC,
+		ObservedAt:   body.ObservedAt,
+		Note:         body.Note,
+	}
+}
+
 func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 	mux.HandleFunc("POST /v1/runs", func(response http.ResponseWriter, request *http.Request) {
 		body, err := decodeJSON[createRunRequest](response, request)
@@ -102,12 +116,37 @@ func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 		if !handleDecode(response, err) {
 			return
 		}
-		run, err := app.AppendObservation(request.PathValue("id"), service.ObservationInput{
-			Sequence:     body.Sequence,
-			Gravity:      body.Gravity,
-			TemperatureC: body.TemperatureC,
-			ObservedAt:   body.ObservedAt,
-			Note:         body.Note,
+		expected, err := expectedVersion(request)
+		if !handleDecode(response, err) {
+			return
+		}
+		run, err := app.AppendObservation(request.PathValue("id"), service.AppendObservationInput{
+			ExpectedVersion: expected,
+			Observation:     observationInput(body),
+		})
+		if err != nil {
+			writeDomainError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, run)
+	})
+
+	mux.HandleFunc("POST /v1/runs/{id}/observations/batch", func(response http.ResponseWriter, request *http.Request) {
+		body, err := decodeJSON[observationBatchRequest](response, request)
+		if !handleDecode(response, err) {
+			return
+		}
+		expected, err := expectedVersion(request)
+		if !handleDecode(response, err) {
+			return
+		}
+		inputs := make([]service.ObservationInput, 0, len(body.Observations))
+		for _, item := range body.Observations {
+			inputs = append(inputs, observationInput(item))
+		}
+		run, err := app.AppendObservations(request.PathValue("id"), service.AppendObservationsInput{
+			ExpectedVersion: expected,
+			Observations:    inputs,
 		})
 		if err != nil {
 			writeDomainError(response, err)

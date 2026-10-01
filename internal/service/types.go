@@ -50,6 +50,16 @@ type ObservationInput struct {
 	Note         string
 }
 
+type AppendObservationInput struct {
+	ExpectedVersion *int64
+	Observation     ObservationInput
+}
+
+type AppendObservationsInput struct {
+	ExpectedVersion *int64
+	Observations    []ObservationInput
+}
+
 type FinishCleaningInput struct {
 	ExpectedVersion *int64
 }

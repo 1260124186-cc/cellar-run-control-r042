@@ -113,6 +113,26 @@
         "domain",
         "storage"
       ]
+    },
+    {
+      "id": "observation-batch",
+      "name": "Import a whole file of observations atomically",
+      "entry": "POST /v1/runs/{id}/observations/batch",
+      "steps": [
+        "submit a file's worth of observations preserving in-file order",
+        "reject the whole batch when any record violates gravity, temperature, time, or sequence rules",
+        "retry a failed import and reimport an identical file with deterministic results",
+        "compare batch results against the same records written one at a time across a day boundary"
+      ],
+      "success": "commits the batch in one revision with the same detail, version, and metrics as single writes",
+      "failure": "returns a stable range, sequence, time, state, or revision error without partial writes",
+      "verification": "the check issues real HTTP requests, verifies all-or-nothing rejection, and compares parity",
+      "module_ids": [
+        "httpapi",
+        "service",
+        "domain",
+        "storage"
+      ]
     }
   ]
 }

@@ -138,6 +138,7 @@ rules, storage coordination, and resource lifecycle.
 Public entry points are:
 
 - `POST /v1/runs/{id}/observations`
+- `POST /v1/runs/{id}/observations/batch`
 - `POST /v1/runs/{id}/conditioning`
 - `POST /v1/runs/{id}/complete`
 - `GET /v1/runs/{id}`
@@ -146,6 +147,18 @@ The client appends three ordered observations, starts conditioning, completes
 the run, and reads the calculated result. Non-monotonic times, rising gravity,
 out-of-range values, excessive sequences, incomplete data, and repeated
 transitions return stable failures without changing persisted state.
+
+The batch endpoint accepts a file's worth of observations in one request and
+applies them all-or-nothing. Records are validated in file order: sequences
+must be contiguous from the run's next expected value and observed times must
+strictly increase, including across day boundaries; gravity, temperature, and
+gravity-movement constraints apply to every record. When any record fails, the
+whole batch is rejected and the run version and persisted observations are
+unchanged. Re-importing an identical file is rejected as a sequence conflict
+rather than duplicated, and retrying a previously failed batch commits exactly
+once. A successful batch advances the run version once per record and leaves
+the same run detail, version, receipt times, and completion metrics as the
+same legal records written through the single-record endpoint.
 
 This path crosses HTTP protocol handling, application orchestration, numeric
 domain rules, and snapshot storage.
@@ -210,13 +223,14 @@ task owns systematic tests for validation boundaries, state transitions,
 numeric calculations, stale revisions, storage failures, and concurrent
 reservation attempts.
 
-The current build command is `go build ./...`. Three bounded production checks
+The current build command is `go build ./...`. Four bounded production checks
 start the real HTTP handler, issue real JSON requests, check success and failure
 behavior, and exit without external services:
 
 - `go run ./cmd/fermentctl check formula-approval`
 - `go run ./cmd/fermentctl check vessel-run-lifecycle`
 - `go run ./cmd/fermentctl check observations-completion`
+- `go run ./cmd/fermentctl check observation-batch`
 
 ## Scope Limits
 
