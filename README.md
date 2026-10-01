@@ -90,6 +90,7 @@ Run workflow:
 - `POST /v1/runs/{id}/reserve`
 - `POST /v1/runs/{id}/start`
 - `POST /v1/runs/{id}/observations`
+- `POST /v1/runs/{id}/observations/batch`
 - `POST /v1/runs/{id}/conditioning`
 - `POST /v1/runs/{id}/complete`
 - `POST /v1/runs/{id}/abort`
@@ -107,6 +108,36 @@ shape:
 }
 ```
 
+A batch observation write submits records in file order and stores them in one
+atomic revision:
+
+```json
+{
+  "observations": [
+    {
+      "sequence": 1,
+      "gravity": 1.05,
+      "temperature_c": 20,
+      "observed_at": "2026-01-01T23:59:50Z",
+      "note": "sample"
+    },
+    {
+      "sequence": 2,
+      "gravity": 1.048,
+      "temperature_c": 20,
+      "observed_at": "2026-01-02T00:00:05Z",
+      "note": "after midnight"
+    }
+  ]
+}
+```
+
+Records are never sorted. Sequence numbers must continue from the current run,
+observed times must strictly increase, and a gravity, temperature, or aggregate
+version failure rejects the complete batch without persisting partial records.
+The run's aggregate version advances once per accepted observation, matching
+the result of submitting the same legal records one at a time.
+
 ## Workflow Checks
 
 Run each production workflow check separately:
@@ -115,6 +146,7 @@ Run each production workflow check separately:
 go run ./cmd/fermentctl check formula-approval
 go run ./cmd/fermentctl check vessel-run-lifecycle
 go run ./cmd/fermentctl check observations-completion
+go run ./cmd/fermentctl check observation-batch
 ```
 
 Each check creates a temporary snapshot directory, starts the real HTTP

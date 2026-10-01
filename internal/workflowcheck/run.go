@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http/httptest"
 	"os"
+	"time"
 
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/clock"
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/httpapi"
@@ -22,7 +23,8 @@ func Run(name string) error {
 	if err != nil {
 		return err
 	}
-	app := service.New(store, clock.System{})
+	now := time.Date(2026, time.January, 1, 23, 59, 30, 0, time.UTC)
+	app := service.New(store, clock.NewFixed(now))
 	server := httptest.NewServer(httpapi.NewHandler(app))
 	defer server.Close()
 	api := newClient(server.URL)
@@ -38,6 +40,10 @@ func Run(name string) error {
 		}
 	case "observations-completion":
 		if err := observationsCompletion(api); err != nil {
+			return err
+		}
+	case "observation-batch":
+		if err := observationBatch(api); err != nil {
 			return err
 		}
 	default:

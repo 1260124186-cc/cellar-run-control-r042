@@ -2,7 +2,6 @@ package workflowcheck
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/1260124186-cc/solo-0016-cellar-run-control/internal/domain"
 )
@@ -21,7 +20,7 @@ func observationsCompletion(api *client) error {
 		return err
 	}
 
-	base := time.Now().UTC().Add(10 * time.Second)
+	base := batchCheckBase
 	points := []struct {
 		gravity     float64
 		temperature float64

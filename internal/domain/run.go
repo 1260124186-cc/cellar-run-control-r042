@@ -119,6 +119,35 @@ func (r *FermentationRun) AddObservation(observation GravityObservation) error {
 	return nil
 }
 
+// AddObservationBatch applies the observations in the supplied file order. It
+// validates the complete batch against a candidate run, so the receiver is not
+// modified when any record is invalid.
+func (r *FermentationRun) AddObservationBatch(observations []GravityObservation, now time.Time) error {
+	if r.State != RunFermenting || r.StartedAt == nil {
+		return NewError(CodeRunState, "observations require a fermenting run")
+	}
+	if len(observations) == 0 {
+		return FieldError(CodeInvalidInput, "observations", "must contain at least one entry")
+	}
+	if len(r.Observations)+len(observations) > 500 {
+		return NewError(CodeObservationConflict,
+			"run cannot contain more than 500 observations")
+	}
+
+	candidate := r.Clone()
+	receivedAt := now.UTC()
+	for _, observation := range observations {
+		observation.ReceivedAt = receivedAt
+		if err := candidate.AddObservation(observation); err != nil {
+			return err
+		}
+	}
+	r.Observations = candidate.Observations
+	r.UpdatedAt = receivedAt
+	r.Version = candidate.Version
+	return nil
+}
+
 func (r *FermentationRun) BeginConditioning(now time.Time) error {
 	if r.State != RunFermenting {
 		return NewError(CodeRunState, "only a fermenting run can enter conditioning")

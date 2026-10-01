@@ -12,6 +12,9 @@ func (s *Service) AppendObservation(
 		if !ok {
 			return domain.NewError(domain.CodeRunNotFound, "run was not found")
 		}
+		if err := s.checkExpected(run.Version, input.ExpectedVersion); err != nil {
+			return err
+		}
 		now := s.clock.Now()
 		observation := domain.GravityObservation{
 			RunID:        run.ID,
@@ -23,6 +26,44 @@ func (s *Service) AppendObservation(
 			ReceivedAt:   now,
 		}
 		if err := run.AddObservation(observation); err != nil {
+			return err
+		}
+		snapshot.Runs[id] = run.Clone()
+		updated = run.Clone()
+		return nil
+	})
+	if err != nil {
+		return domain.FermentationRun{}, err
+	}
+	return updated, nil
+}
+
+func (s *Service) AppendObservationBatch(
+	id string,
+	input ObservationBatchInput,
+) (domain.FermentationRun, error) {
+	var updated domain.FermentationRun
+	err := s.store.Execute(func(snapshot *domain.Snapshot) error {
+		run, ok := snapshot.Runs[id]
+		if !ok {
+			return domain.NewError(domain.CodeRunNotFound, "run was not found")
+		}
+		if err := s.checkExpected(run.Version, input.ExpectedVersion); err != nil {
+			return err
+		}
+		now := s.clock.Now()
+		observations := make([]domain.GravityObservation, 0, len(input.Observations))
+		for _, item := range input.Observations {
+			observations = append(observations, domain.GravityObservation{
+				RunID:        run.ID,
+				Sequence:     item.Sequence,
+				Gravity:      item.Gravity,
+				TemperatureC: item.TemperatureC,
+				ObservedAt:   item.ObservedAt.UTC(),
+				Note:         item.Note,
+			})
+		}
+		if err := run.AddObservationBatch(observations, now); err != nil {
 			return err
 		}
 		snapshot.Runs[id] = run.Clone()

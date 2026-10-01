@@ -138,6 +138,7 @@ rules, storage coordination, and resource lifecycle.
 Public entry points are:
 
 - `POST /v1/runs/{id}/observations`
+- `POST /v1/runs/{id}/observations/batch`
 - `POST /v1/runs/{id}/conditioning`
 - `POST /v1/runs/{id}/complete`
 - `GET /v1/runs/{id}`
@@ -146,6 +147,17 @@ The client appends three ordered observations, starts conditioning, completes
 the run, and reads the calculated result. Non-monotonic times, rising gravity,
 out-of-range values, excessive sequences, incomplete data, and repeated
 transitions return stable failures without changing persisted state.
+
+The batch endpoint accepts an `observations` array and preserves its supplied
+file order. It validates aggregate version, contiguous sequences, strict
+observed-time ordering, gravity, temperature, and capacity for every record
+before publishing a write. If any record is invalid, none of the records are
+persisted; correcting and retrying the complete batch is therefore
+deterministic. Replaying an already imported batch conflicts on its expected
+next sequence. Times crossing midnight or a calendar-day boundary remain valid
+when their UTC instants strictly increase. The run version advances once per
+accepted observation, so successful batch output and later completion metrics
+match the same legal observations written individually.
 
 This path crosses HTTP protocol handling, application orchestration, numeric
 domain rules, and snapshot storage.
@@ -217,6 +229,7 @@ behavior, and exit without external services:
 - `go run ./cmd/fermentctl check formula-approval`
 - `go run ./cmd/fermentctl check vessel-run-lifecycle`
 - `go run ./cmd/fermentctl check observations-completion`
+- `go run ./cmd/fermentctl check observation-batch`
 
 ## Scope Limits
 

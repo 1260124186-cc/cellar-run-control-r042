@@ -26,6 +26,10 @@ type observationRequest struct {
 	Note         string    `json:"note"`
 }
 
+type observationBatchRequest struct {
+	Observations []observationRequest `json:"observations"`
+}
+
 func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 	mux.HandleFunc("POST /v1/runs", func(response http.ResponseWriter, request *http.Request) {
 		body, err := decodeJSON[createRunRequest](response, request)
@@ -97,17 +101,53 @@ func registerRunRoutes(mux *http.ServeMux, app *service.Service) {
 		writeJSON(response, http.StatusOK, map[string]any{"run": run, "vessel": vessel})
 	})
 
+	mux.HandleFunc("POST /v1/runs/{id}/observations/batch", func(response http.ResponseWriter, request *http.Request) {
+		body, err := decodeJSON[observationBatchRequest](response, request)
+		if !handleDecode(response, err) {
+			return
+		}
+		expected, err := expectedVersion(request)
+		if !handleDecode(response, err) {
+			return
+		}
+		observations := make([]service.ObservationInput, 0, len(body.Observations))
+		for _, observation := range body.Observations {
+			observations = append(observations, service.ObservationInput{
+				Sequence:     observation.Sequence,
+				Gravity:      observation.Gravity,
+				TemperatureC: observation.TemperatureC,
+				ObservedAt:   observation.ObservedAt,
+				Note:         observation.Note,
+			})
+		}
+		run, err := app.AppendObservationBatch(request.PathValue("id"),
+			service.ObservationBatchInput{
+				ExpectedVersion: expected,
+				Observations:    observations,
+			})
+		if err != nil {
+			writeDomainError(response, err)
+			return
+		}
+		writeJSON(response, http.StatusOK, run)
+	})
+
 	mux.HandleFunc("POST /v1/runs/{id}/observations", func(response http.ResponseWriter, request *http.Request) {
 		body, err := decodeJSON[observationRequest](response, request)
 		if !handleDecode(response, err) {
 			return
 		}
+		expected, err := expectedVersion(request)
+		if !handleDecode(response, err) {
+			return
+		}
 		run, err := app.AppendObservation(request.PathValue("id"), service.ObservationInput{
-			Sequence:     body.Sequence,
-			Gravity:      body.Gravity,
-			TemperatureC: body.TemperatureC,
-			ObservedAt:   body.ObservedAt,
-			Note:         body.Note,
+			ExpectedVersion: expected,
+			Sequence:        body.Sequence,
+			Gravity:         body.Gravity,
+			TemperatureC:    body.TemperatureC,
+			ObservedAt:      body.ObservedAt,
+			Note:            body.Note,
 		})
 		if err != nil {
 			writeDomainError(response, err)
